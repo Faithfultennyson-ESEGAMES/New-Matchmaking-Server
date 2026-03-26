@@ -14,6 +14,7 @@ const GAME_SERVER_URL = process.env.GAME_SERVER_URL;
 const DICE_GAME_SERVER_URL = process.env.DICE_GAME_SERVER_URL || GAME_SERVER_URL;
 const TICTACTOE_GAME_SERVER_URL = process.env.TICTACTOE_GAME_SERVER_URL || GAME_SERVER_URL;
 const OPENBOX_GAME_SERVER_URL = process.env.OPENBOX_GAME_SERVER_URL || '';
+const OPENBOX_CLIENT_URL = process.env.OPENBOX_CLIENT_URL || '';
 const OPENBOX_CONTROL_TOKEN = process.env.OPENBOX_CONTROL_TOKEN || '';
 const DICE_TURN_TIME_MS = parseInt(process.env.DICE_TURN_TIME_MS, 10) || 8000;
 const TICTACTOE_TURN_DURATION_SEC = parseInt(process.env.TICTACTOE_TURN_DURATION_SEC, 10) || 6;
@@ -145,6 +146,10 @@ function normalizeOpenBoxPlayerCount(playerCount) {
     const parsed = parseInt(playerCount, 10);
     if (!Number.isFinite(parsed)) return null;
     return OPENBOX_PLAYER_COUNTS.includes(parsed) ? parsed : null;
+}
+
+function normalizeBaseUrl(value) {
+    return String(value || '').trim().replace(/\/+$/, '');
 }
 
 function ensureQueueStructure(data) {
@@ -344,7 +349,34 @@ function isPlayerConnected(playerId) {
     return !!room && room.size > 0;
 }
 
-function buildOpenBoxLaunchUrl(joinUrl, playerId, playerName) {
+function buildOpenBoxWsUrl(baseUrl) {
+    try {
+        const url = new URL(baseUrl);
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        return url.origin;
+    } catch {
+        return '';
+    }
+}
+
+function buildOpenBoxLaunchUrl(joinUrl, sessionId, playerId, playerName) {
+    const clientBaseUrl = normalizeBaseUrl(OPENBOX_CLIENT_URL);
+    if (clientBaseUrl) {
+        const params = new URLSearchParams({
+            joinUrl,
+            sessionId,
+            playerId,
+            playerName
+        });
+
+        const wsUrl = buildOpenBoxWsUrl(OPENBOX_GAME_SERVER_URL);
+        if (wsUrl) {
+            params.set('ws', wsUrl);
+        }
+
+        return `${clientBaseUrl}${clientBaseUrl.includes('?') ? '&' : '?'}${params.toString()}`;
+    }
+
     try {
         const url = new URL(joinUrl);
         url.searchParams.set('playerId', playerId);
@@ -391,7 +423,7 @@ function buildReplayStatusPayload(activeSession) {
         launchUrlByPlayerId: Object.fromEntries(
             activeSession.players.map((player) => [
                 player.playerId,
-                buildOpenBoxLaunchUrl(activeSession.joinUrl, player.playerId, player.playerName)
+                buildOpenBoxLaunchUrl(activeSession.joinUrl, activeSession.sessionId, player.playerId, player.playerName)
             ])
         )
     };
@@ -429,7 +461,7 @@ function buildActiveGameRecord(activeSession, player) {
         joinUrl: activeSession.joinUrl,
         launchUrl:
             activeSession.gameType === 'openbox'
-                ? buildOpenBoxLaunchUrl(activeSession.joinUrl, player.playerId, player.playerName)
+                ? buildOpenBoxLaunchUrl(activeSession.joinUrl, activeSession.sessionId, player.playerId, player.playerName)
                 : activeSession.joinUrl,
         gameType: activeSession.gameType,
         mode: activeSession.mode ?? null,
@@ -838,7 +870,8 @@ async function main() {
             ok: true,
             queueStatus: buildQueueStatus(db.data || {}),
             openBox: {
-                configured: !!OPENBOX_GAME_SERVER_URL
+                configured: !!OPENBOX_GAME_SERVER_URL,
+                clientConfigured: !!normalizeBaseUrl(OPENBOX_CLIENT_URL)
             },
             dbEntryTtlMs: DB_ENTRY_TTL_MS
         });
