@@ -1,0 +1,85 @@
+{
+  "queue": {
+    "dice": {
+      "2": [],
+      "4": [],
+      "6": [],
+      "15": []
+    },
+    "tictactoe": {
+      "2": []
+    },
+    "openbox": {
+      "5": {
+        "100": [
+          {
+            "playerId": "player-2",
+            "playerName": "Bob",
+            "socketId": "vkj39bZa2YoNs7jnAAAf",
+            "gameType": "openbox",
+            "mode": null,
+            "playerCount": 5,
+            "stakeAmount": 100,
+            "queuedAt": "2026-03-26T21:24:02.615Z"
+          }
+        ],
+        "500": [],
+        "1000": []
+      }
+    }
+  },
+  "active_games": {},
+  "ended_games": {
+    "105992db-c4dc-4c72-9b08-15a175f8d509": {
+      "ended_at": "2025-12-21T21:43:58.229Z"
+    },
+    "2404db94-19b4-46dc-bd2a-dac95ffd9f87": {
+      "endedAt": "2026-03-26T21:07:48.934Z",
+      "reason": "replay_timeout",
+      "gameType": "openbox"
+    }
+  },
+  "rate_limit": {
+    "techartvers-1765927553391-h3vrzj9": {
+      "count": 2,
+      "windowStart": 1766353296378,
+      "cooldownUntil": 0
+    },
+    "modupe oluwa-1765047442908-w64soxl": {
+      "count": 2,
+      "windowStart": 1766353298694,
+      "cooldownUntil": 0
+    },
+    "gp-1765964891104-3q52mr7": {
+      "count": 4,
+      "windowStart": 1766353853928,
+      "cooldownUntil": 0
+    },
+    "player-1": {
+      "count": 2,
+      "windowStart": 1774558685833,
+      "cooldownUntil": 0
+    },
+    "player-2": {
+      "count": 1,
+      "windowStart": 1774560242615,
+      "cooldownUntil": 0
+    },
+    "player-3": {
+      "count": 2,
+      "windowStart": 1774558700194,
+      "cooldownUntil": 0
+    },
+    "player-4": {
+      "count": 2,
+      "windowStart": 1774558705932,
+      "cooldownUntil": 0
+    },
+    "player-5": {
+      "count": 2,
+      "windowStart": 1774558711152,
+      "cooldownUntil": 0
+    }
+  },
+  "active_sessions": {}
+}
