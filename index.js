@@ -35,8 +35,8 @@ const parseCsvInts = (value, fallback = []) => {
 };
 
 const OPENBOX_STAKE_AMOUNTS = parseCsvInts(process.env.OPENBOX_STAKE_AMOUNTS, [100, 500, 1000]);
-const OPENBOX_PLAYER_COUNTS = parseCsvInts(process.env.OPENBOX_PLAYER_COUNTS, [5, 10, 20]);
-const OPENBOX_MIN_REPLAY_PLAYERS = 5;
+const OPENBOX_PLAYER_COUNTS = parseCsvInts(process.env.OPENBOX_PLAYER_COUNTS, [2, 3, 4, 5, 10, 20]);
+const OPENBOX_MIN_REPLAY_PLAYERS = parseInt(process.env.OPENBOX_MIN_REPLAY_PLAYERS, 10) || 2;
 
 if (!HMAC_SECRET) {
     console.error('FATAL ERROR: HMAC_SECRET must be defined in .env file.');
@@ -150,6 +150,13 @@ function normalizeOpenBoxPlayerCount(playerCount) {
 
 function normalizeBaseUrl(value) {
     return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function normalizePlayerName(value) {
+    return String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .slice(0, 15);
 }
 
 function ensureQueueStructure(data) {
@@ -360,13 +367,14 @@ function buildOpenBoxWsUrl(baseUrl) {
 }
 
 function buildOpenBoxLaunchUrl(joinUrl, sessionId, playerId, playerName) {
+    const normalizedPlayerName = normalizePlayerName(playerName);
     const clientBaseUrl = normalizeBaseUrl(OPENBOX_CLIENT_URL);
     if (clientBaseUrl) {
         const params = new URLSearchParams({
             joinUrl,
             sessionId,
             playerId,
-            playerName
+            playerName: normalizedPlayerName
         });
 
         const wsUrl = buildOpenBoxWsUrl(OPENBOX_GAME_SERVER_URL);
@@ -380,11 +388,11 @@ function buildOpenBoxLaunchUrl(joinUrl, sessionId, playerId, playerName) {
     try {
         const url = new URL(joinUrl);
         url.searchParams.set('playerId', playerId);
-        url.searchParams.set('playerName', playerName);
+        url.searchParams.set('playerName', normalizedPlayerName);
         return url.toString();
     } catch {
         const separator = joinUrl.includes('?') ? '&' : '?';
-        return `${joinUrl}${separator}playerId=${encodeURIComponent(playerId)}&playerName=${encodeURIComponent(playerName)}`;
+        return `${joinUrl}${separator}playerId=${encodeURIComponent(playerId)}&playerName=${encodeURIComponent(normalizedPlayerName)}`;
     }
 }
 
@@ -440,7 +448,7 @@ function buildActiveSessionRecord(gameType, options, sessionResult, candidates) 
         status: gameType === 'openbox' ? 'waitingForPlayers' : 'active',
         players: candidates.map((entry) => ({
             playerId: entry.playerId,
-            playerName: entry.playerName,
+            playerName: normalizePlayerName(entry.playerName),
             socketId: entry.socketId,
             joinedQueueAt: entry.queuedAt || new Date().toISOString()
         })),
@@ -469,7 +477,7 @@ function buildActiveGameRecord(activeSession, player) {
         stakeAmount: activeSession.stakeAmount ?? null,
         players: activeSession.players.map((entry) => ({
             playerId: entry.playerId,
-            playerName: entry.playerName
+            playerName: normalizePlayerName(entry.playerName)
         })),
         createdAt: activeSession.createdAt,
         updatedAt: new Date().toISOString()
@@ -871,7 +879,10 @@ async function main() {
             queueStatus: buildQueueStatus(db.data || {}),
             openBox: {
                 configured: !!OPENBOX_GAME_SERVER_URL,
-                clientConfigured: !!normalizeBaseUrl(OPENBOX_CLIENT_URL)
+                clientConfigured: !!normalizeBaseUrl(OPENBOX_CLIENT_URL),
+                stakeAmounts: [...OPENBOX_STAKE_AMOUNTS],
+                playerCounts: [...OPENBOX_PLAYER_COUNTS],
+                minReplayPlayers: OPENBOX_MIN_REPLAY_PLAYERS
             },
             dbEntryTtlMs: DB_ENTRY_TTL_MS
         });
@@ -892,7 +903,8 @@ async function main() {
         socket.on('request-match', async (data) => {
             try {
                 const { playerId, playerName, gameType: rawGameType } = data || {};
-                if (!playerId || !playerName) {
+                const normalizedPlayerName = normalizePlayerName(playerName);
+                if (!playerId || !normalizedPlayerName) {
                     return socket.emit('match-error', { message: 'playerId and playerName are required.' });
                 }
 
@@ -918,7 +930,14 @@ async function main() {
                     if (db.data.ended_games[activeGame.sessionId]) {
                         delete db.data.active_games[playerId];
                     } else {
-                        socket.emit('match-found', buildMatchFoundPayload(activeGame));
+                        if (activeSession) {
+                            const sessionPlayer = activeSession.players.find((entry) => entry.playerId === playerId);
+                            if (sessionPlayer) {
+                                sessionPlayer.playerName = normalizedPlayerName;
+                                syncActiveGamesForSession(db.data, activeSession);
+                            }
+                        }
+                        socket.emit('match-found', buildMatchFoundPayload(db.data.active_games[playerId] || activeGame));
                         if (activeSession?.gameType === 'openbox' && ['roundEnded', 'replayWaiting'].includes(activeSession.status)) {
                             socket.emit('replay-status', buildReplayStatusPayload(activeSession));
                         }
@@ -941,7 +960,7 @@ async function main() {
                 const queueBucket = getQueueBucket(db.data, gameType, options);
                 const existing = queueBucket.find((entry) => entry.playerId === playerId);
                 if (existing) {
-                    existing.playerName = playerName;
+                    existing.playerName = normalizedPlayerName;
                     existing.socketId = socket.id;
                     existing.queuedAt = new Date().toISOString();
                     existing.gameType = gameType;
@@ -951,7 +970,7 @@ async function main() {
                 } else {
                     queueBucket.push({
                         playerId,
-                        playerName,
+                        playerName: normalizedPlayerName,
                         socketId: socket.id,
                         gameType,
                         mode: options.mode ?? null,
